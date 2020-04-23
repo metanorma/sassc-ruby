@@ -1,6 +1,23 @@
 # frozen_string_literal: true
+require 'tmpdir'
 
 module SassC
+  class RubyPackerPathWrapper < Array
+    MEMEFS_PATH = '/__enclose_io_memfs__/'.freeze
+
+    def <<(*paths)
+      paths = paths.map do |path|
+                      path.start_with?(MEMEFS_PATH) ? set_up_temp_include_folder(path) : path
+                    end
+      super(*paths)
+    end
+
+    def set_up_temp_include_folder(path)
+      dir = Dir.mktmpdir(path.split('/').last)
+      FileUtils.copy_entry(path, dir)
+      dir
+    end
+  end
   # The global load paths for Sass files. This is meant for plugins and
   # libraries to register the paths to their Sass stylesheets to that they may
   # be `@imported`. This load path is used by every instance of {Sass::Engine}.
@@ -20,9 +37,11 @@ module SassC
   # @return [Array<String, Pathname, Sass::Importers::Base>]
   def self.load_paths
     @load_paths ||= if ENV['SASS_PATH']
-                      ENV['SASS_PATH'].split(SassC::Util.windows? ? ';' : ':')
+                      res = RubyPackerPathWrapper.new
+                      ENV['SASS_PATH'].split(SassC::Util.windows? ? ';' : ':').each { |n| res << n }
+                      res
                     else
-                      []
+                      RubyPackerPathWrapper.new
                     end
   end
 end
